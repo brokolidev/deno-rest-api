@@ -1,5 +1,10 @@
+import { Client } from "https://deno.land/x/postgres/mod.ts";
 import { v4 } from "https://deno.land/std/uuid/mod.ts";
 import { Product } from "../types.ts";
+import { dbCreds } from "../config.ts";
+
+// Init client
+const client = new Client(dbCreds);
 
 let products: Product[] = [
   {
@@ -30,36 +35,83 @@ let products: Product[] = [
 
 // @desc    Get all products
 // @route   GET /api/v1/products
-const getProducts = ({ response }: { response: any }) => {
-  response.body = {
-    success: true,
-    data: products,
-  };
+const getProducts = async ({ response }: { response: any }) => {
+  try {
+    await client.connect();
+
+    const result = await client.query("SELECT * FROM products");
+
+    const products = new Array();
+
+    result.rows.map((p) => {
+      let obj: any = new Object();
+
+      result.rowDescription.columns.map((el, i) => {
+        obj[el.name] = p[i];
+      });
+
+      products.push(obj);
+    });
+
+    response.body = {
+      success: true,
+      data: products,
+    };
+  } catch (err) {
+    response.status = 500;
+    response.body = {
+      success: false,
+      msg: err.toString(),
+    };
+  } finally {
+    await client.end();
+  }
 };
 
 // @desc    Get single product
 // @route   GET /api/v1/products/:id
-const getProduct = ({
+const getProduct = async ({
   params,
   response,
 }: {
   params: { id: string };
   response: any;
 }) => {
-  const product: Product | undefined = products.find((p) => p.id === params.id);
+  try {
+    await client.connect();
 
-  if (product) {
-    response.status = 200;
-    response.body = {
-      success: true,
-      data: product,
-    };
-  } else {
-    response.status = 404;
+    const result = await client.query(
+      "SELECT * FROM products WHERE id = $1",
+      params.id
+    );
+
+    if (result.rows.toString() === "") {
+      response.status = 404;
+      response.body = {
+        success: false,
+        msg: `No product with the id of ${params.id}`,
+      };
+    } else {
+      const product: any = new Object();
+      result.rows.map((p) => {
+        result.rowDescription.columns.map((el, i) => {
+          product[el.name] = p[i];
+        });
+      });
+
+      response.body = {
+        success: true,
+        data: product,
+      };
+    }
+  } catch (err) {
+    response.status = 500;
     response.body = {
       success: false,
-      msg: "No product found",
+      msg: err.toString(),
     };
+  } finally {
+    await client.end();
   }
 };
 
@@ -73,6 +125,7 @@ const addProduct = async ({
   response: any;
 }) => {
   const body = await request.body();
+  const product = body.value;
 
   if (!request.hasBody) {
     response.status = 400;
@@ -81,14 +134,30 @@ const addProduct = async ({
       msg: "No data",
     };
   } else {
-    const product: Product = body.value;
-    product.id = v4.generate();
-    products.push(product);
-    response.status = 201;
-    response.body = {
-      success: true,
-      data: product,
-    };
+    try {
+      await client.connect();
+
+      const result = await client.query(
+        "INSERT INTO products(name, description, price) VALUES($1, $2, $3)",
+        product.name,
+        product.description,
+        product.price
+      );
+
+      response.status = 201;
+      response.body = {
+        success: true,
+        data: product,
+      };
+    } catch (error) {
+      response.status = 500;
+      response.body = {
+        success: false,
+        msg: error.toString(),
+      };
+    } finally {
+      await client.end();
+    }
   }
 };
 
