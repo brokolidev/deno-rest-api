@@ -172,6 +172,8 @@ const updateProduct = async ({
   request: any;
   response: any;
 }) => {
+  console.log(params);
+
   await getProduct({ params: { id: params.id }, response });
 
   if (response.status === 404) {
@@ -200,10 +202,8 @@ const updateProduct = async ({
           product.name,
           product.description,
           product.price,
-          product.id
+          params.id
         );
-
-        console.log(result);
 
         response.status = 200;
         response.body = {
@@ -225,19 +225,45 @@ const updateProduct = async ({
 
 // @desc    Delete product
 // @route   DELETE /api/v1/products/:id
-const deleteProduct = ({
+const deleteProduct = async ({
   params,
   response,
 }: {
   params: { id: string };
   response: any;
 }) => {
-  products = products.filter((p) => p.id !== params.id);
-  response.status = 200;
-  response.body = {
-    success: true,
-    msg: "Product removed",
-  };
+  await getProduct({ params: { id: params.id }, response });
+
+  if (response.status === 404) {
+    response.body = {
+      success: false,
+      msg: response.body.msg,
+    };
+    response.status = 404;
+    return;
+  } else {
+    try {
+      await client.connect();
+      const result = await client.query(
+        "DELETE FROM products WHERE id=$1",
+        params.id
+      );
+
+      response.body = {
+        success: true,
+        msg: `Product with id ${params.id} has been deleted`,
+      };
+      response.status = 204;
+    } catch (error) {
+      response.status = 500;
+      response.body = {
+        success: false,
+        msg: error.toString(),
+      };
+    } finally {
+      await client.end();
+    }
+  }
 };
 
 export { getProducts, getProduct, addProduct, updateProduct, deleteProduct };
