@@ -1,37 +1,8 @@
 import { Client } from "https://deno.land/x/postgres/mod.ts";
-import { v4 } from "https://deno.land/std/uuid/mod.ts";
-import { Product } from "../types.ts";
 import { dbCreds } from "../config.ts";
 
 // Init client
 const client = new Client(dbCreds);
-
-let products: Product[] = [
-  {
-    id: "1",
-    name: "Product One",
-    description: "This is product one",
-    price: 29.99,
-  },
-  {
-    id: "2",
-    name: "Product Two",
-    description: "This is product two",
-    price: 39.99,
-  },
-  {
-    id: "3",
-    name: "Product Three",
-    description: "This is product three",
-    price: 49.99,
-  },
-  {
-    id: "4",
-    name: "Product Four",
-    description: "This is product four",
-    price: 59.99,
-  },
-];
 
 // @desc    Get all products
 // @route   GET /api/v1/products
@@ -172,6 +143,8 @@ const updateProduct = async ({
   request: any;
   response: any;
 }) => {
+  console.log(params);
+
   await getProduct({ params: { id: params.id }, response });
 
   if (response.status === 404) {
@@ -200,10 +173,8 @@ const updateProduct = async ({
           product.name,
           product.description,
           product.price,
-          product.id
+          params.id
         );
-
-        console.log(result);
 
         response.status = 200;
         response.body = {
@@ -225,19 +196,45 @@ const updateProduct = async ({
 
 // @desc    Delete product
 // @route   DELETE /api/v1/products/:id
-const deleteProduct = ({
+const deleteProduct = async ({
   params,
   response,
 }: {
   params: { id: string };
   response: any;
 }) => {
-  products = products.filter((p) => p.id !== params.id);
-  response.status = 200;
-  response.body = {
-    success: true,
-    msg: "Product removed",
-  };
+  await getProduct({ params: { id: params.id }, response });
+
+  if (response.status === 404) {
+    response.body = {
+      success: false,
+      msg: response.body.msg,
+    };
+    response.status = 404;
+    return;
+  } else {
+    try {
+      await client.connect();
+      const result = await client.query(
+        "DELETE FROM products WHERE id=$1",
+        params.id
+      );
+
+      response.body = {
+        success: true,
+        msg: `Product with id ${params.id} has been deleted`,
+      };
+      response.status = 204;
+    } catch (error) {
+      response.status = 500;
+      response.body = {
+        success: false,
+        msg: error.toString(),
+      };
+    } finally {
+      await client.end();
+    }
+  }
 };
 
 export { getProducts, getProduct, addProduct, updateProduct, deleteProduct };
